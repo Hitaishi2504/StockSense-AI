@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StockSense AI – Smart Inventory &amp; Demand Forecasting</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="logo">📦</div><div>StockSense AI<small>Smart inventory &amp; forecasting</small></div></div>
+    <nav class="nav" id="nav">
+      <a data-page="dashboard"><i class="bi bi-speedometer2"></i>Dashboard</a>
+      <a data-page="inventory"><i class="bi bi-box-seam"></i>Inventory</a>
+      <a data-page="expiry"><i class="bi bi-hourglass-split"></i>Expiry Alerts<span class="count" id="nav-expiry" hidden></span></a>
+      <a data-page="sales"><i class="bi bi-receipt"></i>Sales</a>
+      <a data-page="forecast"><i class="bi bi-graph-up-arrow"></i>Sales Forecasting</a>
+      <a data-page="reorder"><i class="bi bi-arrow-repeat"></i>Reorder Recommendations</a>
+      <a data-page="reports"><i class="bi bi-file-earmark-bar-graph"></i>Reports</a>
+      <a data-page="settings"><i class="bi bi-gear"></i>Settings</a>
+    </nav>
+    <div class="side-foot">Flask · MySQL · scikit-learn · Chart.js</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>
+      <div><h1 id="page-title">Dashboard</h1><div class="sub" id="page-sub"></div></div>
+    </div>
+    <div class="content">
+
+      <!-- DASHBOARD -->
+      <section class="page" id="page-dashboard">
+        <div class="grid cards" id="dash-cards"></div>
+        <div class="grid g3 mb">
+          <div class="card"><h3>Inventory by category <span class="hint">units in stock</span></h3><div class="chart-box"><canvas id="ch-category"></canvas></div></div>
+          <div class="card"><h3>Expiry risk <span class="hint">products in stock</span></h3><div class="chart-box"><canvas id="ch-expiry"></canvas></div></div>
+          <div class="card"><h3>Seasonal insights <span class="hint">from sales dataset</span></h3><div id="dash-insights" class="loading"></div></div>
+        </div>
+        <div class="card mb"><h3>Sales forecast <span class="hint">store/department dataset (all stores) — not your products</span></h3>
+          <div class="chart-box tall"><canvas id="ch-dash-forecast"></canvas></div><div id="dash-forecast-note" class="small muted mt"></div></div>
+        <div class="grid g3">
+          <div class="card"><h3>Low-stock products</h3><div id="dash-low"></div></div>
+          <div class="card"><h3>Expiring products</h3><div id="dash-expiring"></div></div>
+          <div class="card"><h3>Recent sales</h3><div id="dash-recent"></div></div>
+        </div>
+      </section>
+
+      <!-- INVENTORY -->
+      <section class="page" id="page-inventory">
+        <div class="toolbar">
+          <input id="inv-q" type="search" placeholder="Search name, category, supplier, ID…" style="min-width:240px">
+          <select id="inv-cat"><option value="all">All categories</option></select>
+          <select id="inv-stock"><option value="all">Any stock status</option><option>Out of Stock</option><option>Critical</option><option>Low</option><option>Adequate</option><option>Overstocked</option></select>
+          <select id="inv-exp"><option value="all">Any expiry status</option><option>Expired</option><option>Urgent</option><option>Expiring Soon</option><option>Safe</option></select>
+          <span class="spacer"></span>
+          <button class="btn primary" id="inv-add"><i class="bi bi-plus-lg"></i>Add product</button>
+        </div>
+        <div class="table-wrap"><table><thead id="inv-head"></thead><tbody id="inv-body"></tbody></table></div>
+        <div class="pager" id="inv-pager"></div>
+      </section>
+
+      <!-- EXPIRY -->
+      <section class="page" id="page-expiry">
+        <div class="grid cards" id="exp-cards"></div>
+        <div class="notice info"><i class="bi bi-info-circle"></i><div><b>How alerts work:</b> Urgent = 7 days or less · Expiring Soon = 8–30 days · Expired = past expiry date. Only products with stock &gt; 0 are listed. “Units at risk” = stock − (daily sales × days left), using your recorded sales when available, otherwise a labeled assumption.</div></div>
+        <div class="toolbar">
+          <select id="exp-cat"><option value="all">All categories</option></select>
+          <select id="exp-period">
+            <option value="all">All alerts (≤ 30 days + expired)</option><option value="expired">Already expired</option>
+            <option value="7">Expiring within 7 days</option><option value="30">Expiring within 30 days</option><option value="high">High expiry risk</option>
+          </select>
+        </div>
+        <div class="table-wrap mb"><table><thead id="exp-head"></thead><tbody id="exp-body"></tbody></table></div>
+        <h2 style="font-size:17px;margin:24px 0 4px">Smart selling strategy</h2>
+        <p class="muted small mb">Every recommendation includes its reason. These are rule-based suggestions for your own products — they do not use the store/department CSV forecast.</p>
+        <div class="grid g2" id="exp-recs"></div>
+      </section>
+
+      <!-- SALES -->
+      <section class="page" id="page-sales">
+        <div class="grid g2">
+          <div class="card">
+            <h3>Record a sale <span class="hint">stock updates automatically</span></h3>
+            <div class="form-grid">
+              <div class="field full"><label>Product (name or ID)</label><input id="sale-product" list="sale-products" placeholder="Start typing a product name or ID…" autocomplete="off"><datalist id="sale-products"></datalist></div>
+              <div class="field"><label>Quantity sold</label><input id="sale-qty" type="number" min="1" step="1" value="1"></div>
+              <div class="field"><label>Sales date</label><input id="sale-date" type="date"></div>
+              <div class="field"><label>Selling price (per unit)</label><input id="sale-price" type="number" min="0" step="0.01" placeholder="Default: product price"></div>
+              <div class="field"><label>&nbsp;</label><button class="btn primary" id="sale-save"><i class="bi bi-check2-circle"></i>Save sale</button></div>
+            </div>
+            <div class="form-err" id="sale-err"></div>
+            <p class="muted small mt">Sales you record here are saved in MySQL and drive the sales-rate calculations for expiry and reorder recommendations.</p>
+          </div>
+          <div class="card"><h3>Summary <span class="hint">last 30 days</span></h3><div id="sale-summary" class="loading"></div></div>
+        </div>
+        <h2 style="font-size:17px;margin:24px 0 10px">Sales history</h2>
+        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Category</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th><th>Source</th><th></th></tr></thead><tbody id="sale-body"></tbody></table></div>
+      </section>
+
+      <!-- FORECAST -->
+      <section class="page" id="page-forecast">
+        <div class="notice warn"><i class="bi bi-exclamation-triangle"></i><div><b>Scope:</b> this module forecasts <b>store- and department-level weekly sales</b> from <code>sales.csv</code> + <code>features.csv</code>. The data has no product names, product quantities or expiry dates, so it is <b>not</b> a demand forecast for your individual inventory products (see Expiry Alerts and Reorder Recommendations for those).</div></div>
+        <div class="card mb">
+          <div class="toolbar" style="margin:0">
+            <div class="field"><label>Store</label><select id="fc-store"><option value="all">All stores</option></select></div>
+            <div class="field"><label>Department</label><select id="fc-dept"><option value="all">All departments</option></select></div>
+            <div class="field"><label>From</label><input type="date" id="fc-start"></div>
+            <div class="field"><label>To</label><input type="date" id="fc-end"></div>
+            <div class="field"><label>Weeks ahead</label><select id="fc-weeks"><option>4</option><option>8</option><option selected>12</option><option>26</option></select></div>
+            <div class="field"><label>&nbsp;</label><button class="btn primary" id="fc-apply"><i class="bi bi-funnel"></i>Apply</button></div>
+            <span class="spacer"></span>
+            <div class="field"><label>&nbsp;</label><button class="btn" id="fc-train"><i class="bi bi-cpu"></i>Train / retrain model</button></div>
+          </div>
+        </div>
+        <div id="fc-status"></div>
+        <div class="tabs" id="fc-tabs">
+          <button class="active" data-tab="fc-t1">Forecast</button><button data-tab="fc-t2">Historical trends</button>
+          <button data-tab="fc-t3">Seasonal analysis</button><button data-tab="fc-t4">Model accuracy</button>
+        </div>
+        <div class="tabpane active" id="fc-t1">
+          <div class="grid cards" id="fc-cards"></div>
+          <div class="card mb"><h3>Historical sales (actual) <span class="hint" id="fc-scope1"></span></h3><div class="chart-box"><canvas id="ch-fc-hist"></canvas></div></div>
+          <div class="card mb"><h3>Predicted sales <span class="hint">holdout test + future weeks</span></h3><div class="chart-box tall"><canvas id="ch-fc-pred"></canvas></div><div class="small muted mt" id="fc-pred-note"></div></div>
+          <div class="card"><h3>Predicted demand for the coming weeks</h3><div class="table-wrap" style="border:0"><table><thead><tr><th>Week ending</th><th class="num">Predicted sales</th><th class="num">Likely range (≈80%)</th><th>Holiday week?</th></tr></thead><tbody id="fc-future"></tbody></table></div></div>
+        </div>
+        <div class="tabpane" id="fc-t2">
+          <div class="grid cards" id="fc-growth"></div>
+          <div class="grid g2 mb">
+            <div class="card"><h3>Monthly sales trend <span class="hint">total per month</span></h3><div class="chart-box"><canvas id="ch-monthly"></canvas></div></div>
+            <div class="card"><h3>Weekly demand pattern <span class="hint">avg by week of year</span></h3><div class="chart-box"><canvas id="ch-weekly"></canvas></div></div>
+          </div>
+          <div class="grid g2">
+            <div class="card"><h3>Holiday vs non-holiday weeks <span class="hint">avg weekly sales</span></h3><div class="chart-box short"><canvas id="ch-holiday"></canvas></div></div>
+            <div class="card"><h3>Holiday breakdown</h3><div id="fc-holiday-table"></div></div>
+          </div>
+        </div>
+        <div class="tabpane" id="fc-t3">
+          <div class="grid g2 mb">
+            <div class="card"><h3>Seasonality by month <span class="hint">index 100 = average week</span></h3><div class="chart-box"><canvas id="ch-month-index"></canvas></div></div>
+            <div class="card"><h3>Insights</h3><ul class="insights" id="fc-insights"></ul></div>
+          </div>
+          <div class="grid g2">
+            <div class="card"><h3>Dataset seasons <span class="hint">labels from features.csv</span></h3><div class="chart-box short"><canvas id="ch-ds-season"></canvas></div><span class="badge b-info mt">Supported by the dataset</span></div>
+            <div class="card"><h3>Indian retail seasons <span class="hint">assumption</span></h3><div class="chart-box short"><canvas id="ch-in-season"></canvas></div><span class="badge b-warn mt">Assumption: calendar months mapped to Indian seasons — not labeled in the data</span></div>
+          </div>
+        </div>
+        <div class="tabpane" id="fc-t4"><div id="fc-model"></div></div>
+      </section>
+
+      <!-- REORDER -->
+      <section class="page" id="page-reorder">
+        <div class="grid cards" id="ro-cards"></div>
+        <div class="notice info"><i class="bi bi-info-circle"></i><div id="ro-note"></div></div>
+        <div class="toolbar"><select id="ro-filter"><option value="all">All products</option><option value="reorder">Needs reorder</option><option value="hold">Hold – do not restock</option></select></div>
+        <div class="table-wrap"><table><thead><tr><th>Product</th><th>Category</th><th class="num">Stock</th><th class="num">Min</th><th>Stock status</th><th>Recommendation</th><th class="num">Order qty</th><th class="num">Est. cost</th><th>Method</th><th>Reason</th></tr></thead><tbody id="ro-body"></tbody></table></div>
+      </section>
+
+      <!-- REPORTS -->
+      <section class="page" id="page-reports">
+        <div class="grid g2" id="rep-grid"></div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="page" id="page-settings">
+        <div class="grid g2">
+          <div class="card"><h3>Store &amp; calculation settings</h3>
+            <div class="form-grid" id="set-form"></div>
+            <div class="actions" style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn primary" id="set-save">Save settings</button></div>
+          </div>
+          <div class="card"><h3>Data</h3><div id="set-data"></div></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- PRODUCT MODAL -->
+<div class="modal-bg" id="prod-modal"><div class="modal">
+  <h2 id="prod-title">Add product</h2>
+  <div class="form-grid">
+    <div class="field full"><label>Product name *</label><input id="f-name"></div>
+    <div class="field"><label>Category *</label><input id="f-category" list="cat-list"><datalist id="cat-list"></datalist></div>
+    <div class="field"><label>Supplier</label><input id="f-supplier" list="sup-list"><datalist id="sup-list"></datalist></div>
+    <div class="field"><label>Stock quantity *</label><input id="f-stock" type="number" min="0" step="1"></div>
+    <div class="field"><label>Minimum stock level *</label><input id="f-min" type="number" min="0" step="1"></div>
+    <div class="field"><label>Purchase price *</label><input id="f-buy" type="number" min="0" step="0.01"></div>
+    <div class="field"><label>Selling price *</label><input id="f-sell" type="number" min="0" step="0.01"></div>
+    <div class="field"><label>Manufacturing date</label><input id="f-mfg" type="date"></div>
+    <div class="field"><label>Expiry date *</label><input id="f-exp" type="date"></div>
+  </div>
+  <div class="form-err" id="prod-err"></div>
+  <div class="actions"><button class="btn" id="prod-cancel">Cancel</button><button class="btn primary" id="prod-save">Save product</button></div>
+</div></div>
+
+<div class="toast-box" id="toasts"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/core.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventory.js') }}"></script>
+<script src="{{ url_for('static', filename='js/expiry.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sales.js') }}"></script>
+<script src="{{ url_for('static', filename='js/forecast.js') }}"></script>
+<script src="{{ url_for('static', filename='js/reorder.js') }}"></script>
+<script src="{{ url_for('static', filename='js/reports.js') }}"></script>
+<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
